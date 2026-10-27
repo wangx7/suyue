@@ -3,7 +3,8 @@
   "displayName": "素阅 · 文档阅读器",
   "description": "在 VS Code 里安静地阅读 Word、Excel、CSV 和 Markdown。本地解析，支持深色。",
   "version": "0.1.0",
-  "publisher": "wangx7",
+  "publisher": "wangx123",
+  "author": "wangx7",
   "icon": "icon.png",
   "repository": {
     "type": "git",
