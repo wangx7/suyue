@@ -1,0 +1,246 @@
+diff --git a/node_modules/docx-preview/dist/docx-preview.js b/node_modules/docx-preview/dist/docx-preview.js
+index af4b45a..75eedfc 100644
+--- a/node_modules/docx-preview/dist/docx-preview.js
++++ b/node_modules/docx-preview/dist/docx-preview.js
+@@ -428,6 +428,9 @@
+                 case "footerReference":
+                     (section.footerRefs ?? (section.footerRefs = [])).push(parseFooterHeaderReference(e, xml));
+                     break;
++                case "docGrid":
++                    section.docGrid = { type: xml.attr(e, "type"), linePitch: xml.lengthAttr(e, "linePitch") };
++                    break;
+                 case "titlePg":
+                     section.titlePage = xml.boolAttr(e, "val", true);
+                     break;
+@@ -2459,6 +2462,14 @@
+                         if (elem.localName == "pPr")
+                             this.parseSpacing(c, style);
+                         break;
++                    case "snapToGrid":
++                        if (elem.localName == "pPr")
++                            style["--docx-snap"] = globalXmlParser.boolAttr(c, "val", true) ? "1" : "0";
++                        break;
++                    case "contextualSpacing":
++                        if (elem.localName == "pPr")
++                            style["--docx-ctx"] = globalXmlParser.boolAttr(c, "val", true) ? "1" : "0";
++                        break;
+                     case "wordWrap":
+                         if (globalXmlParser.boolAttr(c, "val"))
+                             style["overflow-wrap"] = "break-word";
+@@ -2479,7 +2490,6 @@
+                     case "szCs":
+                     case "tabs":
+                     case "outlineLvl":
+-                    case "contextualSpacing":
+                     case "tblStyleColBandSize":
+                     case "tblStyleRowBandSize":
+                     case "webHidden":
+@@ -2549,26 +2559,37 @@
+                 style["font-family"] = [...new Set(fonts)].join(', ');
+         }
+         parseIndentation(node, style) {
+-            var firstLine = globalXmlParser.lengthAttr(node, "firstLine");
+-            var hanging = globalXmlParser.lengthAttr(node, "hanging");
+-            var left = globalXmlParser.lengthAttr(node, "left");
+-            var start = globalXmlParser.lengthAttr(node, "start");
+-            var right = globalXmlParser.lengthAttr(node, "right");
+-            var end = globalXmlParser.lengthAttr(node, "end");
++            // 字符单位（如“首行缩进 2 字符”，单位为百分之一字符）非 0 时优先于 twip 值
++            const length = (name) => {
++                const chars = globalXmlParser.intAttr(node, `${name}Chars`);
++                return chars ? `calc(${chars / 100} * var(--docx-ch, 1em))` : globalXmlParser.lengthAttr(node, name);
++            };
++            const negate = (v) => v.startsWith("calc(") ? `calc(-1 * ${v.slice(5)}` : `-${v}`;
++            var firstLine = length("firstLine");
++            var hanging = length("hanging");
++            var left = length("left");
++            var start = length("start");
++            var right = length("right");
++            var end = length("end");
+             if (firstLine)
+                 style["text-indent"] = firstLine;
+             if (hanging)
+-                style["text-indent"] = `-${hanging}`;
++                style["text-indent"] = negate(hanging);
+             if (left || start)
+                 style["margin-inline-start"] = left || start;
+             if (right || end)
+                 style["margin-inline-end"] = right || end;
+         }
+         parseSpacing(node, style) {
+-            var before = globalXmlParser.lengthAttr(node, "before");
+-            var after = globalXmlParser.lengthAttr(node, "after");
++            // “行”单位（百分之一行）非 0 时优先，1 行按 Word 的 15.6pt 换算
++            const lines = (name) => {
++                const v = globalXmlParser.intAttr(node, `${name}Lines`);
++                return v ? `${(v / 100 * 15.6).toFixed(2)}pt` : globalXmlParser.lengthAttr(node, name);
++            };
++            var before = lines("before");
++            var after = lines("after");
+             var line = globalXmlParser.intAttr(node, "line", null);
+-            var lineRule = globalXmlParser.attr(node, "lineRule");
++            var lineRule = globalXmlParser.attr(node, "lineRule") ?? "auto"; // 规范默认值为 auto
+             if (before)
+                 style["margin-top"] = before;
+             if (after)
+@@ -2576,13 +2597,16 @@
+             if (line !== null) {
+                 switch (lineRule) {
+                     case "auto":
+-                        style["line-height"] = `${(line / 240).toFixed(2)}`;
++                        style["line-height"] = `${(line / 240 * 1.2).toFixed(2)}`;
++                        style["--docx-line"] = `auto ${line / 240}`;
+                         break;
+                     case "atLeast":
+-                        style["line-height"] = `calc(100% + ${line / 20}pt)`;
++                        style["line-height"] = `max(1.2em, ${line / 20}pt)`;
++                        style["--docx-line"] = `atLeast ${line / 20}`;
+                         break;
+                     default:
+                         style["line-height"] = style["min-height"] = `${line / 20}pt`;
++                        style["--docx-line"] = "exact";
+                         break;
+                 }
+             }
+@@ -2714,7 +2738,7 @@
+             return 'solid';
+         }
+         static valueOfTblLayout(c) {
+-            var type = globalXmlParser.attr(c, "val");
++            var type = globalXmlParser.attr(c, "type") ?? globalXmlParser.attr(c, "val");
+             return type == "fixed" ? "fixed" : "auto";
+         }
+         static classNameOfCnfStyle(c) {
+@@ -2893,7 +2917,8 @@
+                 result.setAttribute("style", style);
+             }
+             else {
+-                Object.assign(result.style, style);
++                for (const [k, v] of Object.entries(style))
++                    k.startsWith("--") ? result.style.setProperty(k, v) : (result.style[k] = v);
+             }
+         }
+         if (props) {
+diff --git a/node_modules/docx-preview/dist/docx-preview.mjs b/node_modules/docx-preview/dist/docx-preview.mjs
+index 35fb7e7..a1055dd 100644
+--- a/node_modules/docx-preview/dist/docx-preview.mjs
++++ b/node_modules/docx-preview/dist/docx-preview.mjs
+@@ -424,6 +424,9 @@ function parseSectionProperties(elem, xml = globalXmlParser) {
+             case "footerReference":
+                 (section.footerRefs ?? (section.footerRefs = [])).push(parseFooterHeaderReference(e, xml));
+                 break;
++            case "docGrid":
++                section.docGrid = { type: xml.attr(e, "type"), linePitch: xml.lengthAttr(e, "linePitch") };
++                break;
+             case "titlePg":
+                 section.titlePage = xml.boolAttr(e, "val", true);
+                 break;
+@@ -2455,6 +2458,14 @@ class DocumentParser {
+                     if (elem.localName == "pPr")
+                         this.parseSpacing(c, style);
+                     break;
++                case "snapToGrid":
++                    if (elem.localName == "pPr")
++                        style["--docx-snap"] = globalXmlParser.boolAttr(c, "val", true) ? "1" : "0";
++                    break;
++                case "contextualSpacing":
++                    if (elem.localName == "pPr")
++                        style["--docx-ctx"] = globalXmlParser.boolAttr(c, "val", true) ? "1" : "0";
++                    break;
+                 case "wordWrap":
+                     if (globalXmlParser.boolAttr(c, "val"))
+                         style["overflow-wrap"] = "break-word";
+@@ -2475,7 +2486,6 @@ class DocumentParser {
+                 case "szCs":
+                 case "tabs":
+                 case "outlineLvl":
+-                case "contextualSpacing":
+                 case "tblStyleColBandSize":
+                 case "tblStyleRowBandSize":
+                 case "webHidden":
+@@ -2545,26 +2555,37 @@ class DocumentParser {
+             style["font-family"] = [...new Set(fonts)].join(', ');
+     }
+     parseIndentation(node, style) {
+-        var firstLine = globalXmlParser.lengthAttr(node, "firstLine");
+-        var hanging = globalXmlParser.lengthAttr(node, "hanging");
+-        var left = globalXmlParser.lengthAttr(node, "left");
+-        var start = globalXmlParser.lengthAttr(node, "start");
+-        var right = globalXmlParser.lengthAttr(node, "right");
+-        var end = globalXmlParser.lengthAttr(node, "end");
++        // 字符单位（如“首行缩进 2 字符”，单位为百分之一字符）非 0 时优先于 twip 值
++        const length = (name) => {
++            const chars = globalXmlParser.intAttr(node, `${name}Chars`);
++            return chars ? `calc(${chars / 100} * var(--docx-ch, 1em))` : globalXmlParser.lengthAttr(node, name);
++        };
++        const negate = (v) => v.startsWith("calc(") ? `calc(-1 * ${v.slice(5)}` : `-${v}`;
++        var firstLine = length("firstLine");
++        var hanging = length("hanging");
++        var left = length("left");
++        var start = length("start");
++        var right = length("right");
++        var end = length("end");
+         if (firstLine)
+             style["text-indent"] = firstLine;
+         if (hanging)
+-            style["text-indent"] = `-${hanging}`;
++            style["text-indent"] = negate(hanging);
+         if (left || start)
+             style["margin-inline-start"] = left || start;
+         if (right || end)
+             style["margin-inline-end"] = right || end;
+     }
+     parseSpacing(node, style) {
+-        var before = globalXmlParser.lengthAttr(node, "before");
+-        var after = globalXmlParser.lengthAttr(node, "after");
++        // “行”单位（百分之一行）非 0 时优先，1 行按 Word 的 15.6pt 换算
++        const lines = (name) => {
++            const v = globalXmlParser.intAttr(node, `${name}Lines`);
++            return v ? `${(v / 100 * 15.6).toFixed(2)}pt` : globalXmlParser.lengthAttr(node, name);
++        };
++        var before = lines("before");
++        var after = lines("after");
+         var line = globalXmlParser.intAttr(node, "line", null);
+-        var lineRule = globalXmlParser.attr(node, "lineRule");
++        var lineRule = globalXmlParser.attr(node, "lineRule") ?? "auto"; // 规范默认值为 auto
+         if (before)
+             style["margin-top"] = before;
+         if (after)
+@@ -2572,13 +2593,16 @@ class DocumentParser {
+         if (line !== null) {
+             switch (lineRule) {
+                 case "auto":
+-                    style["line-height"] = `${(line / 240).toFixed(2)}`;
++                    style["line-height"] = `${(line / 240 * 1.2).toFixed(2)}`;
++                    style["--docx-line"] = `auto ${line / 240}`;
+                     break;
+                 case "atLeast":
+-                    style["line-height"] = `calc(100% + ${line / 20}pt)`;
++                    style["line-height"] = `max(1.2em, ${line / 20}pt)`;
++                    style["--docx-line"] = `atLeast ${line / 20}`;
+                     break;
+                 default:
+                     style["line-height"] = style["min-height"] = `${line / 20}pt`;
++                    style["--docx-line"] = "exact";
+                     break;
+             }
+         }
+@@ -2710,7 +2734,7 @@ class values {
+         return 'solid';
+     }
+     static valueOfTblLayout(c) {
+-        var type = globalXmlParser.attr(c, "val");
++        var type = globalXmlParser.attr(c, "type") ?? globalXmlParser.attr(c, "val");
+         return type == "fixed" ? "fixed" : "auto";
+     }
+     static classNameOfCnfStyle(c) {
+@@ -2889,7 +2913,8 @@ function h(elem) {
+             result.setAttribute("style", style);
+         }
+         else {
+-            Object.assign(result.style, style);
++            for (const [k, v] of Object.entries(style))
++                k.startsWith("--") ? result.style.setProperty(k, v) : (result.style[k] = v);
+         }
+     }
+     if (props) {
