@@ -224,3 +224,13 @@ export function createShell(opts: ShellOptions) {
 }
 
 export type Shell = ReturnType<typeof createShell>;
+
+/** 只在 live() 为真时才转发调用，防止慢的旧文件渲染完后改掉新文件的侧栏 */
+export function scopedShell(shell: Shell, live: () => boolean): Shell {
+  return new Proxy(shell, {
+    get(target, prop) {
+      const v = target[prop as keyof Shell];
+      return typeof v === 'function' ? (...args: unknown[]) => (live() ? (v as (...a: unknown[]) => unknown)(...args) : undefined) : v;
+    },
+  });
+}

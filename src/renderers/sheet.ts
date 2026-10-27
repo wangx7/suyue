@@ -1,6 +1,7 @@
 import { icon } from '../icons';
 import { cssVar, el } from '../ui';
 import type { CellRange, SheetData, SheetWorkerResponse } from './sheet-types';
+import workerUrl from '../workers/sheet.worker.ts?worker&url';
 import type { Renderer } from './types';
 
 const ROW_H = 24;
@@ -17,8 +18,18 @@ const isNumeric = (t: string) => NUM_RE.test(t) && !/^0\d/.test(t) && !/\d{16}/.
 const EXTRA_ROWS = 30;
 const EXTRA_COLS = 5;
 
-function parseInWorker(buf: ArrayBuffer, name: string): Promise<SheetData[]> {
-  const worker = new Worker(new URL('../workers/sheet.worker.ts', import.meta.url), { type: 'module' });
+async function createWorker(): Promise<Worker> {
+  try {
+    return new Worker(workerUrl, { type: 'module' });
+  } catch {
+    // VS Code 的 webview 里脚本和页面不同源，不能直接建 Worker；Worker 打包成了单文件，取回来用 blob 地址建
+    const code = await (await fetch(workerUrl)).text();
+    return new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })), { type: 'module' });
+  }
+}
+
+async function parseInWorker(buf: ArrayBuffer, name: string): Promise<SheetData[]> {
+  const worker = await createWorker();
   return new Promise((resolve, reject) => {
     worker.onmessage = (e: MessageEvent<SheetWorkerResponse>) => {
       worker.terminate();

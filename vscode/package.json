@@ -1,0 +1,111 @@
+{
+  "name": "suyue",
+  "displayName": "素阅 · 文档阅读器",
+  "description": "在 VS Code 里安静地阅读 Word、Excel、CSV 和 Markdown。本地解析，支持深色。",
+  "version": "0.1.0",
+  "publisher": "wangx7",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wangx7/suyue"
+  },
+  "homepage": "https://wangx7.github.io/suyue/",
+  "bugs": "https://github.com/wangx7/suyue/issues",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "docx",
+    "word",
+    "excel",
+    "xlsx",
+    "csv",
+    "markdown",
+    "viewer",
+    "reader"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "suyue.word",
+        "displayName": "素阅",
+        "priority": "default",
+        "selector": [
+          { "filenamePattern": "*.docx" },
+          { "filenamePattern": "*.docm" },
+          { "filenamePattern": "*.dotx" },
+          { "filenamePattern": "*.doc" },
+          { "filenamePattern": "*.dot" }
+        ]
+      },
+      {
+        "viewType": "suyue.sheet",
+        "displayName": "素阅",
+        "priority": "default",
+        "selector": [
+          { "filenamePattern": "*.xlsx" },
+          { "filenamePattern": "*.xlsm" },
+          { "filenamePattern": "*.xlsb" },
+          { "filenamePattern": "*.xls" },
+          { "filenamePattern": "*.ods" }
+        ]
+      },
+      {
+        "viewType": "suyue.markdown",
+        "displayName": "素阅",
+        "priority": "option",
+        "selector": [
+          { "filenamePattern": "*.md" },
+          { "filenamePattern": "*.markdown" },
+          { "filenamePattern": "*.mdown" },
+          { "filenamePattern": "*.mkd" },
+          { "filenamePattern": "*.mdx" }
+        ]
+      },
+      {
+        "viewType": "suyue.csv",
+        "displayName": "素阅",
+        "priority": "option",
+        "selector": [
+          { "filenamePattern": "*.csv" },
+          { "filenamePattern": "*.tsv" }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "suyue.open",
+        "title": "用素阅打开",
+        "category": "素阅",
+        "icon": "$(book)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "suyue.open",
+          "when": "resourceExtname =~ /^\\.(md|markdown|mdown|mkd|mdx|csv|tsv)$/i",
+          "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "suyue.open",
+          "when": "resourceExtname =~ /^\\.(md|markdown|mdown|mkd|mdx|csv|tsv)$/i && activeEditor == workbench.editors.files.textFileEditor",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "suyue.open",
+          "when": "resourceExtname =~ /^\\.(md|markdown|mdown|mkd|mdx|csv|tsv)$/i"
+        }
+      ]
+    }
+  }
+}

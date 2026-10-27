@@ -8,9 +8,16 @@ export const THEME_LABEL: Record<ThemeMode, string> = { system: '跟随系统', 
 const media = matchMedia('(prefers-color-scheme: dark)');
 const listeners = new Set<(dark: boolean) => void>();
 let mode: ThemeMode = 'system';
+/** 宿主（VS Code）给出的深浅色，有值时“跟随系统”改为跟随它 */
+let hostDark: boolean | null = null;
 
 export function isDark(): boolean {
-  return mode === 'dark' || (mode === 'system' && media.matches);
+  return mode === 'dark' || (mode === 'system' && (hostDark ?? media.matches));
+}
+
+export function setHostDark(dark: boolean) {
+  hostDark = dark;
+  apply();
 }
 
 export function getThemeMode(): ThemeMode {

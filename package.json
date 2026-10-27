@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "build:vscode": "tsc --noEmit && vite build --config vscode/vite.config.mts && tsc -p vscode",
+    "package:vscode": "npm run build:vscode && cd vscode && vsce package --no-dependencies --skip-license"
   },
   "dependencies": {
     "cfb": "^1.2.2",
@@ -20,6 +22,8 @@
   "devDependencies": {
     "@types/chrome": "^0.3.6",
     "@types/markdown-it": "^14.1.2",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^4.0.0",
     "patch-package": "^8.0.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.5"

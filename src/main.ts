@@ -1,26 +1,14 @@
 import './styles.css';
-import { createShell, recentList, type Shell } from './shell';
+import { createShell, recentList, scopedShell } from './shell';
 import { addRecent, fileKey, listRecent, loadState, removeRecent, saveState, urlKey, type RecentItem } from './store';
 import { initTheme, onThemeChange } from './theme';
 import { button, el } from './ui';
 import { attachZoom } from './zoom';
-import type { Linker, Renderer, Viewer } from './renderers/types';
+import { detect, extOf, KIND_LABEL, loaders, MD_EXTS, SHEET_EXTS, sizeText } from './formats';
+import type { Linker, Viewer } from './renderers/types';
 
 const APP_NAME = '素阅';
 
-type Kind = RecentItem['kind'];
-
-// 每种格式的渲染器按需加载：打开 Word 时不会下载表格解析库
-const loaders: Record<Kind, () => Promise<Renderer>> = {
-  docx: () => import('./renderers/docx').then((m) => m.renderDocx),
-  doc: () => import('./renderers/doc').then((m) => m.renderDoc),
-  sheet: () => import('./renderers/sheet').then((m) => m.renderSheet),
-  md: () => import('./renderers/md').then((m) => m.renderMarkdown),
-};
-const KIND_LABEL: Record<Kind, string> = { docx: 'Word 文档', doc: 'Word 97-2003 文档', sheet: '表格', md: 'Markdown' };
-
-const SHEET_EXTS = ['xlsx', 'xlsm', 'xlsb', 'xls', 'ods', 'csv', 'tsv'];
-const MD_EXTS = ['md', 'markdown', 'mdown', 'mkd', 'mdx'];
 // 浏览器自己能显示的格式，交给新标签页；xml、json 按纯文本显示
 const TEXT = 'text/plain;charset=utf-8';
 const BROWSER_TYPES: Record<string, string> = {
@@ -66,38 +54,6 @@ let current: Viewer | null = null;
 let currentKey = '';
 let openToken = 0;
 
-function extOf(name: string): string {
-  const m = /\.([a-z0-9]+)$/i.exec(name);
-  return m ? m[1].toLowerCase() : '';
-}
-
-function bytesInclude(buf: ArrayBuffer, needle: string, fromEnd: boolean): boolean {
-  const len = Math.min(buf.byteLength, 128 * 1024);
-  const view = new Uint8Array(buf, fromEnd ? buf.byteLength - len : 0, len);
-  return new TextDecoder('latin1').decode(view).includes(needle);
-}
-
-/** 先看文件头魔数，再看扩展名，扩展名缺失时再从 zip 目录 / OLE 目录里找特征 */
-function detect(name: string, buf: ArrayBuffer): Kind | null {
-  const ext = extOf(name);
-  const b = new Uint8Array(buf, 0, Math.min(8, buf.byteLength));
-  if (b[0] === 0x50 && b[1] === 0x4b) {
-    if (['docx', 'docm', 'dotx'].includes(ext)) return 'docx';
-    if (SHEET_EXTS.includes(ext)) return 'sheet';
-    if (bytesInclude(buf, 'word/', true)) return 'docx';
-    if (bytesInclude(buf, 'xl/', true) || bytesInclude(buf, 'content.xml', true)) return 'sheet';
-    return null;
-  }
-  if (b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0) {
-    if (ext === 'doc' || ext === 'dot') return 'doc';
-    if (ext === 'xls') return 'sheet';
-    return bytesInclude(buf, 'W\0o\0r\0d\0D\0o\0c', false) ? 'doc' : 'sheet';
-  }
-  if (MD_EXTS.includes(ext)) return 'md';
-  if (SHEET_EXTS.includes(ext) || ext === 'txt') return 'sheet';
-  return null;
-}
-
 /** 浏览器能直接显示时返回 MIME 类型：先看扩展名，没有再看文件头 */
 function browserType(name: string, buf: ArrayBuffer): string | null {
   const known = BROWSER_TYPES[extOf(name)];
@@ -133,12 +89,6 @@ function blobHref(buf: ArrayBuffer, type: string, name: string): string {
     '<style>html,body,iframe{margin:0;width:100%;height:100%;border:0;display:block}</style>' +
     `<iframe sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads" src="${inner}"></iframe>`;
   return URL.createObjectURL(new Blob([page], { type: 'text/html;charset=utf-8' }));
-}
-
-function sizeText(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 // ---------- 阅读位置 ----------
@@ -246,16 +196,6 @@ function openInTab(href: string, name: string) {
   shell.hud(`已在新标签页打开「${name}」`, 1600);
 }
 
-/** 只在本次打开仍是最新时才转发调用，防止慢的旧文件渲染完后改掉新文件的侧栏 */
-function scopedShell(token: number): Shell {
-  return new Proxy(shell, {
-    get(target, prop) {
-      const v = target[prop as keyof Shell];
-      return typeof v === 'function' ? (...args: unknown[]) => (token === openToken ? (v as (...a: unknown[]) => unknown)(...args) : undefined) : v;
-    },
-  });
-}
-
 interface OpenOptions {
   /** 记入“最近打开”的额外字段（句柄、网址） */
   recent?: Partial<RecentItem>;
@@ -280,7 +220,7 @@ async function openBuffer(buf: ArrayBuffer, name: string, key: string, { recent 
   const loading = showLoading('正在打开…');
   try {
     const render = await loaders[kind]();
-    const viewer = await render(buf, { host, shell: scopedShell(token), name, saved: loadState(key), linker });
+    const viewer = await render(buf, { host, shell: scopedShell(shell, () => token === openToken), name, saved: loadState(key), linker });
     if (token !== openToken) return viewer.destroy();
     current = viewer;
     currentKey = key;

@@ -1,7 +1,7 @@
 # 素阅
 
 安静地阅读 Word、Excel、CSV 和 Markdown。文件在浏览器里解析，不会上传；浅色、深色都是原生配色。
-同一份代码既能当网页用，也能打包成 Chrome / Edge 扩展。
+同一份代码既能当网页用，也能打包成 Chrome / Edge 扩展和 VS Code 插件。
 
 在线使用：https://wangx7.github.io/suyue/
 
@@ -51,6 +51,19 @@ npm run build    # 输出到 dist/
 3. 点“加载已解压的扩展程序”，选择 `dist/` 目录。
 
 之后点工具栏图标打开，或在网页上右键 .docx / .xlsx / .md 等链接选“用素阅打开”。右键本地 `file://` 链接需要在扩展详情页开启“允许访问文件网址”。
+
+## VS Code 插件
+
+代码在 `vscode/`：`vscode/src/extension.ts` 负责读文件、存阅读位置、打开链接；`vscode/webview/main.ts` 是 webview 入口，渲染部分和网页版共用 `src/`。
+
+```bash
+npm run build:vscode     # 构建到 vscode/dist/
+npm run package:vscode   # 打包成 vscode/suyue-<版本>.vsix
+```
+
+调试：用 VS Code 打开本仓库，运行 `code --extensionDevelopmentPath=$PWD/vscode`。Word 和表格默认用素阅打开；Markdown、CSV 默认还是文本编辑器，右键选“用素阅打开”。
+
+发布：在 https://marketplace.visualstudio.com/manage 创建发布者 `wangx7`（和 `vscode/package.json` 的 `publisher` 一致），然后 `npx vsce login wangx7`、`cd vscode && npx vsce publish --no-dependencies --skip-license`。
 
 ## 已知限制
 

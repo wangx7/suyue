@@ -1,0 +1,2 @@
+/* VS Code 里每个文件单独一个标签页，没有首页 */
+.fab-home { display: none !important; }
