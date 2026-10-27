@@ -22,7 +22,11 @@
     "type": "module"
   },
   "permissions": [
-    "contextMenus"
+    "contextMenus",
+    "downloads"
+  ],
+  "host_permissions": [
+    "file:///*"
   ],
   "optional_host_permissions": [
     "<all_urls>"
