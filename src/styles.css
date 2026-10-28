@@ -135,7 +135,7 @@ button, input { font: inherit; color: inherit; }
 }
 .side-title {
   flex: none;
-  margin: 52px 24px 14px;
+  margin: 16px 24px 14px; /* 与右侧按钮同一行（按钮 top 10px、高 32px） */
   color: var(--text);
   font-weight: 600;
   word-break: break-all;
