@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "素阅 · 文档阅读器",
   "short_name": "素阅",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "安静地阅读 Word、Excel、PPT、电子书、CSV 和 Markdown。本地解析，不上传，支持深色。",
   "icons": {
     "16": "icons/icon-16.png",

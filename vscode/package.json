@@ -2,7 +2,7 @@
   "name": "suyue",
   "displayName": "素阅 · 文档阅读器",
   "description": "在 VS Code 里安静地阅读 Word、Excel、PPT、EPUB 电子书、CSV 和 Markdown，播放 flac 音频。本地解析，支持深色。",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "wangx123",
   "author": "wangx7",
   "icon": "icon.png",
