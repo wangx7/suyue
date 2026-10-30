@@ -23,7 +23,7 @@ const GENERICS = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantas
 const quote = (n: string) => (GENERICS.has(n) ? n : `"${n.replace(/"/g, '')}"`);
 
 /** 展开 font-family 列表：每个字体后面紧跟它的替代字体，通用族名放最后 */
-function expand(list: string): string {
+export function expand(list: string): string {
   if (list.includes('var(')) return list;
   const out: string[] = [];
   let generic = '';

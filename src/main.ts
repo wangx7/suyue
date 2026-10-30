@@ -4,7 +4,7 @@ import { addRecent, fileKey, listRecent, loadState, removeRecent, saveState, url
 import { initTheme, onThemeChange } from './theme';
 import { button, el } from './ui';
 import { attachZoom } from './zoom';
-import { detect, extOf, KIND_LABEL, loaders, MD_EXTS, SHEET_EXTS, sizeText } from './formats';
+import { ALL_EXTS, detect, extOf, KIND_LABEL, loaders, MD_EXTS, sizeText } from './formats';
 import type { Linker, Viewer } from './renderers/types';
 
 const APP_NAME = '素阅';
@@ -29,6 +29,10 @@ const ACCEPT: Record<string, string[]> = {
   'text/csv': ['.csv'],
   'text/tab-separated-values': ['.tsv'],
   'text/markdown': MD_EXTS.map((e) => `.${e}`),
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx', '.pptm'],
+  'application/vnd.openxmlformats-officedocument.presentationml.slideshow': ['.ppsx', '.ppsm'],
+  'application/vnd.openxmlformats-officedocument.presentationml.template': ['.potx'],
+  'application/epub+zip': ['.epub'],
 };
 const isExtension = typeof chrome !== 'undefined' && !!chrome.runtime?.id;
 
@@ -137,7 +141,7 @@ async function showHome() {
   home.append(
     el('h1', 'home-name', APP_NAME),
     button('选择文件', '⌘/Ctrl + O', pickFile),
-    el('p', 'home-hint', '或拖入 Word、Excel、CSV、Markdown 文件'),
+    el('p', 'home-hint', '或拖入 Word、Excel、PPT、电子书、CSV、Markdown 文件'),
   );
   center(home, el('p', 'home-foot', '文件只在本地解析，不会上传'));
   const items = (await listRecent()).slice(0, 8);
@@ -210,7 +214,7 @@ async function openBuffer(buf: ArrayBuffer, name: string, key: string, { recent 
   const kind = detect(name, buf);
   const type = kind ? null : browserType(name, buf);
   if (type) return openInTab(recent.url ?? blobHref(buf, type, name), name);
-  if (!kind) return showError('暂不支持这个文件', `无法识别「${name}」的格式。支持 Word、Excel、CSV 和 Markdown。`);
+  if (!kind) return showError('暂不支持这个文件', `无法识别「${name}」的格式。支持 Word、Excel、PPT、EPUB 电子书、CSV 和 Markdown。`);
 
   const size = buf.byteLength; // 表格解析时 buf 会转交给 Worker，先记下大小
   shell.setDoc(name, `${KIND_LABEL[kind]} · ${sizeText(size)}`);
@@ -249,7 +253,7 @@ async function openFile(file: File, handle?: FileSystemFileHandle, replaces?: st
 async function pickFile() {
   if (!window.showOpenFilePicker) return fileInput.click();
   try {
-    const [handle] = await window.showOpenFilePicker({ types: [{ description: 'Word / Excel / CSV / Markdown', accept: ACCEPT }] });
+    const [handle] = await window.showOpenFilePicker({ types: [{ description: 'Word / Excel / PPT / EPUB / CSV / Markdown', accept: ACCEPT }] });
     await openFile(await handle.getFile(), handle);
   } catch (err) {
     if ((err as DOMException).name !== 'AbortError') fileInput.click();
@@ -318,7 +322,7 @@ function urlLinker(base: string): Linker {
       const url = abs(path);
       if (!url) return false;
       const ext = extOf(nameFromUrl(url, null));
-      if (MD_EXTS.includes(ext) || SHEET_EXTS.includes(ext) || ['docx', 'doc'].includes(ext)) openUrl(url);
+      if (ALL_EXTS.includes(ext)) openUrl(url);
       else window.open(url, '_blank', 'noopener');
       return true;
     },

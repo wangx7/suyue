@@ -9,6 +9,8 @@ export interface ReadState {
   cell?: [number, number];
   sx?: number;
   sy?: number;
+  /** 音频播放位置（秒） */
+  time?: number;
 }
 
 const POS_KEY = 'anyue.positions';
@@ -54,7 +56,7 @@ export function saveState(key: string, state: ReadState) {
 export interface RecentItem {
   id: string;
   name: string;
-  kind: 'docx' | 'doc' | 'sheet' | 'md';
+  kind: 'docx' | 'doc' | 'sheet' | 'md' | 'pptx' | 'epub';
   size?: number;
   time: number;
   url?: string;

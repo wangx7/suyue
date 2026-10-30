@@ -8,13 +8,17 @@ import type { ReadState } from '../../src/store';
 import { initTheme, onThemeChange, setHostDark, THEME_LABEL } from '../../src/theme';
 import { el } from '../../src/ui';
 import { attachZoom } from '../../src/zoom';
+import { renderAudio } from './media';
 
 declare function acquireVsCodeApi(): { postMessage(msg: unknown): void };
 
 interface LoadMessage {
   type: 'load';
   name: string;
-  data: Uint8Array | ArrayBuffer;
+  /** 文档内容；音频不传内容，改传 src */
+  data?: Uint8Array | ArrayBuffer;
+  /** 音频的 webview 资源地址 */
+  src?: string;
   saved: ReadState;
   /** 文档所在目录的 webview 地址，以 / 结尾 */
   base: string;
@@ -102,7 +106,7 @@ function linker(base: string): Linker {
   };
 }
 
-async function open({ name, data, saved, base }: LoadMessage) {
+async function open({ name, data, src, saved, base }: LoadMessage) {
   const t = ++token;
   // 文件改动后重新加载时沿用当前的阅读位置
   if (current) {
@@ -116,6 +120,14 @@ async function open({ name, data, saved, base }: LoadMessage) {
   shell.setZoom(null);
   shell.watchScroll(null);
 
+  if (src) {
+    shell.setDoc(name, '音频');
+    const host = el('div', 'viewer-host');
+    stage.append(host);
+    current = renderAudio(src, host, name, saved, saveSoon);
+    return;
+  }
+  if (!data) return;
   const buf = ArrayBuffer.isView(data) ? (data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer) : data;
   const kind = detect(name, buf);
   if (!kind) {

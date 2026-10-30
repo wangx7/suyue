@@ -1,6 +1,6 @@
 # 素阅
 
-安静地阅读 Word、Excel、CSV 和 Markdown。文件在浏览器里解析，不会上传；浅色、深色都是原生配色。
+安静地阅读 Word、Excel、PPT、EPUB 电子书、CSV 和 Markdown。文件在浏览器里解析，不会上传；浅色、深色都是原生配色。
 同一份代码既能当网页用，也能打包成 Chrome / Edge 扩展和 VS Code 插件。
 
 在线使用：https://wangx7.github.io/suyue/
@@ -13,6 +13,8 @@
 | doc（97-2003） | 自己解析 piece table，只取正文 | 按“第一章 / 一、/ 1.1”这类编号推测 | 纯文字 |
 | xlsx / xls / ods / csv | SheetJS 在 Web Worker 里解析，Canvas 虚拟网格 | 工作表列表 | 网格按主题绘制 |
 | md / markdown | markdown-it（GFM 表格、任务列表、自动链接），内嵌 HTML 经 DOMPurify 过滤，highlight.js 着色 | `#` 标题 | 主题变量 |
+| pptx | 自己解析：母版、版式、占位符继承，主题色，形状、图片、组合、表格、SmartArt（用 PowerPoint 存好的排版），备注显示在每页下方 | 每页标题 | 幻灯片保持原色，只有背景跟随主题 |
+| epub | 按 spine 把各章接成一篇，不用书自带的 CSS，排版同 Markdown；内容经 DOMPurify 过滤 | 书自带的目录（nav 或 toc.ncx） | 主题变量 |
 
 ## 操作
 
@@ -22,7 +24,7 @@
 | 右上角主页按钮 | 回到首页，查看最近打开的文件 |
 | ⌘/Ctrl + \ | 显示 / 隐藏目录 |
 | 双指捏合 / Ctrl + 滚轮 | 缩放，指针下的内容不动；点右上角的百分比恢复 100% |
-| ⌘/Ctrl + F | 表格里搜索；Word 和 Markdown 用浏览器自带的查找 |
+| ⌘/Ctrl + F | 表格里搜索；其他格式用浏览器自带的查找 |
 
 每个文件自动记住阅读位置、缩放、视图和选中格。Word 阅读视图把正文放大到约 16px（最多 1.2 倍）；文档里的 Windows 字体（宋体、仿宋、微软雅黑、Calibri 等）在没有安装的系统上换成字形相近的本机字体。
 
@@ -61,7 +63,7 @@ npm run build:vscode     # 构建到 vscode/dist/
 npm run package:vscode   # 打包成 vscode/suyue-<版本>.vsix
 ```
 
-调试：用 VS Code 打开本仓库，运行 `code --extensionDevelopmentPath=$PWD/vscode`。Word 和表格默认用素阅打开；Markdown、CSV 默认还是文本编辑器，右键选“用素阅打开”。
+调试：用 VS Code 打开本仓库，运行 `code --extensionDevelopmentPath=$PWD/vscode`。Word、表格、PPT、EPUB、flac 默认用素阅打开；Markdown、CSV、mp3/wav/ogg 默认还是 VS Code 自己的编辑器，右键选“用素阅打开”。VS Code 内置的解码器没有 AAC 和 opus，所以 m4a、aac、opus 插件也放不了，不接管。
 
 发布：在 https://marketplace.visualstudio.com/manage 创建发布者 `wangx7`（和 `vscode/package.json` 的 `publisher` 一致），然后 `npx vsce login wangx7`、`cd vscode && npx vsce publish --no-dependencies --skip-license`。
 
@@ -71,4 +73,5 @@ npm run package:vscode   # 打包成 vscode/suyue-<版本>.vsix
 - docx 页面视图只在明确的分页符或分节处分页；文本框、域代码等复杂排版还原有限。
 - 表格不显示单元格填充色和字体样式（SheetJS 社区版不读取）。
 - Markdown 不渲染数学公式、Mermaid 和脚注；本地打开时读不到同目录的图片。
-- 不支持 pptx。PDF、图片、音视频、网页、JSON 等浏览器自己能显示的文件，会直接在新标签页里交给浏览器打开；本地网页在沙箱里运行，读不到同目录的图片和脚本。
+- pptx 不显示图表和动画，不支持旧版 .ppt；电子书不支持 DRM 加密的书。
+- PDF、图片、音视频、网页、JSON 等浏览器自己能显示的文件，会直接在新标签页里交给浏览器打开；本地网页在沙箱里运行，读不到同目录的图片和脚本。

@@ -1,7 +1,7 @@
 {
   "name": "suyue",
   "displayName": "素阅 · 文档阅读器",
-  "description": "在 VS Code 里安静地阅读 Word、Excel、CSV 和 Markdown。本地解析，支持深色。",
+  "description": "在 VS Code 里安静地阅读 Word、Excel、PPT、EPUB 电子书、CSV 和 Markdown，播放 flac 音频。本地解析，支持深色。",
   "version": "0.1.0",
   "publisher": "wangx123",
   "author": "wangx7",
@@ -26,6 +26,11 @@
     "xlsx",
     "csv",
     "markdown",
+    "pptx",
+    "powerpoint",
+    "epub",
+    "ebook",
+    "flac",
     "viewer",
     "reader"
   ],
@@ -54,6 +59,45 @@
           { "filenamePattern": "*.xlsb" },
           { "filenamePattern": "*.xls" },
           { "filenamePattern": "*.ods" }
+        ]
+      },
+      {
+        "viewType": "suyue.slides",
+        "displayName": "素阅",
+        "priority": "default",
+        "selector": [
+          { "filenamePattern": "*.pptx" },
+          { "filenamePattern": "*.pptm" },
+          { "filenamePattern": "*.ppsx" },
+          { "filenamePattern": "*.ppsm" },
+          { "filenamePattern": "*.potx" }
+        ]
+      },
+      {
+        "viewType": "suyue.epub",
+        "displayName": "素阅",
+        "priority": "default",
+        "selector": [
+          { "filenamePattern": "*.epub" }
+        ]
+      },
+      {
+        "viewType": "suyue.audio",
+        "displayName": "素阅",
+        "priority": "default",
+        "selector": [
+          { "filenamePattern": "*.flac" }
+        ]
+      },
+      {
+        "viewType": "suyue.audioOption",
+        "displayName": "素阅",
+        "priority": "option",
+        "selector": [
+          { "filenamePattern": "*.mp3" },
+          { "filenamePattern": "*.wav" },
+          { "filenamePattern": "*.ogg" },
+          { "filenamePattern": "*.oga" }
         ]
       },
       {
@@ -90,21 +134,21 @@
       "explorer/context": [
         {
           "command": "suyue.open",
-          "when": "resourceExtname =~ /^\\.(md|markdown|mdown|mkd|mdx|csv|tsv)$/i",
+          "when": "resourceExtname =~ /^\\.(md|markdown|mdown|mkd|mdx|csv|tsv|mp3|wav|ogg|oga)$/i",
           "group": "navigation"
         }
       ],
       "editor/title": [
         {
           "command": "suyue.open",
-          "when": "resourceExtname =~ /^\\.(md|markdown|mdown|mkd|mdx|csv|tsv)$/i && activeEditor == workbench.editors.files.textFileEditor",
+          "when": "resourceExtname =~ /^\\.(md|markdown|mdown|mkd|mdx|csv|tsv)$/i && activeEditor == workbench.editors.files.textFileEditor || resourceExtname =~ /^\\.(mp3|wav|ogg|oga)$/i && activeCustomEditorId == vscode.audioPreview",
           "group": "navigation"
         }
       ],
       "commandPalette": [
         {
           "command": "suyue.open",
-          "when": "resourceExtname =~ /^\\.(md|markdown|mdown|mkd|mdx|csv|tsv)$/i"
+          "when": "resourceExtname =~ /^\\.(md|markdown|mdown|mkd|mdx|csv|tsv|mp3|wav|ogg|oga)$/i"
         }
       ]
     }

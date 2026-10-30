@@ -11,6 +11,7 @@ const PATHS = {
   close: '<path d="M7 7l10 10M17 7 7 17"/>',
   copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+  music: '<path d="M9 17.5V6l10-2v11.5"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/>',
 };
 
 export type IconName = keyof typeof PATHS;

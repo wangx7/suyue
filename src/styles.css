@@ -554,6 +554,55 @@ section.docx p { min-height: 1lh; }
 .hljs-addition { background: var(--hl-add-bg); color: var(--hl-tag); }
 .hljs-deletion { background: var(--hl-del-bg); color: var(--hl-keyword); }
 
+/* ---------- 电子书（在 Markdown 排版的基础上调整） ---------- */
+.epub-read :is(h1, h2) { padding-bottom: 0; border-bottom: none; }
+.epub-read img { height: auto; }
+.epub-read svg { display: block; max-width: 100%; max-height: 90vh; margin: 0 auto; }
+.epub-read :is(p, div):has(> img:only-child) { text-align: center; }
+.epub-read a[href="#"]:not([data-target]) { color: inherit; cursor: text; text-decoration: none; }
+.epub-chapter + .epub-chapter { margin-top: 3em; padding-top: 3em; border-top: 1px solid var(--hairline); }
+
+/* ---------- 演示文稿：幻灯片按原尺寸绘制，--fit 缩放到窗口宽度 ---------- */
+.pptx-deck { --fit: 1; display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 56px 32px 64px; }
+.pptx-item { display: flex; flex-direction: column; align-items: center; }
+.pptx-frame {
+  position: relative;
+  width: calc(var(--sw) * var(--fit) * 1px);
+  height: calc(var(--sh) * var(--fit) * 1px);
+  overflow: hidden;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: var(--paper-shadow);
+}
+.pptx-hidden .pptx-frame { opacity: 0.6; }
+.pptx-notes { width: calc(var(--sw) * var(--fit) * 1px); margin-top: 12px; padding: 0 4px; color: var(--text-2); font-size: 13.5px; line-height: 1.7; }
+.pptx-notes p { margin: 0 0 0.3em; }
+/* 幻灯片内部是“画面”，不随主题变色 */
+.pptx-slide {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  background: #fff no-repeat center;
+  color: #000;
+  line-height: 1.2;
+  text-align: left;
+  transform: scale(var(--fit));
+  transform-origin: 0 0;
+}
+.pptx-shape, .pptx-pic, .pptx-group { position: absolute; }
+.pptx-pic { overflow: hidden; }
+.doc-scroll .pptx-pic img { position: absolute; max-width: none; opacity: 1; }
+.pptx-geom { position: absolute; inset: 0; background-position: center; background-repeat: no-repeat; }
+.pptx-svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.pptx-text { position: absolute; inset: 0; display: flex; flex-direction: column; white-space: pre-wrap; overflow-wrap: break-word; }
+.pptx-p { margin: 0; }
+.pptx-p a { color: inherit; }
+.pptx-bullet { display: inline-block; text-indent: 0; }
+.pptx-table { table-layout: fixed; border-collapse: collapse; }
+.pptx-table td { white-space: pre-wrap; overflow-wrap: break-word; }
+.pptx-placeholder { display: grid; place-items: center; border: 1px dashed #b0b5bb; border-radius: 4px; background: rgba(140, 149, 159, 0.06); color: #8c959f; font-size: 14px; }
+
 /* ---------- 表格 ---------- */
 .sheet-view { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--grid-bg); }
 .sheet-bar {

@@ -1,5 +1,8 @@
 // 扩展后台：点图标打开查看器；右键文档链接“用素阅打开”；本地文档拖进标签页时改用素阅打开
-const EXTS = ['docx', 'docm', 'doc', 'xlsx', 'xlsm', 'xlsb', 'xls', 'csv', 'tsv', 'ods', 'md', 'markdown', 'mdown', 'mkd', 'mdx'];
+const EXTS = [
+  'docx', 'docm', 'doc', 'xlsx', 'xlsm', 'xlsb', 'xls', 'csv', 'tsv', 'ods', 'md', 'markdown', 'mdown', 'mkd', 'mdx',
+  'pptx', 'pptm', 'ppsx', 'ppsm', 'potx', 'epub',
+];
 const LINK_PATTERNS = EXTS.flatMap((e) => [`*://*/*.${e}`, `*://*/*.${e}?*`, `file:///*.${e}`]);
 const MENU_ID = 'open-in-anyue';
 
