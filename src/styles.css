@@ -35,6 +35,7 @@
   --accent: var(--primary);
   --accent-soft: var(--primary-alpha);
   --grid-hit: rgba(255, 240, 126, 0.7);
+  --grid-range: rgba(91, 116, 201, 0.13);
   /* Markdown 代码（配色参照 GitHub） */
   --code-bg: #f6f8fa;
   --code-inline-bg: rgba(175, 184, 193, 0.2);
@@ -78,6 +79,7 @@
   --danger: #f47067;
   --grid-line: #222427;
   --grid-hit: rgba(252, 231, 155, 0.28);
+  --grid-range: rgba(123, 147, 230, 0.2);
   --code-bg: #1b1c1e;
   --code-inline-bg: rgba(110, 118, 129, 0.3);
   --hl-comment: #8b949e;
@@ -603,6 +605,73 @@ section.docx p { min-height: 1lh; }
 .pptx-table td { white-space: pre-wrap; overflow-wrap: break-word; }
 .pptx-placeholder { display: grid; place-items: center; border: 1px dashed #b0b5bb; border-radius: 4px; background: rgba(140, 149, 159, 0.06); color: #8c959f; font-size: 14px; }
 
+/* ---------- PDF：每页一个 Canvas，上面叠一层透明文字供选择和搜索（文字层规则取自 pdf.js） ---------- */
+.pdf-pages {
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px; /* 与 pdf.ts 的 GAP、TOP_PAD 一致 */
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
+  padding: 56px 24px 48px;
+}
+.pdf-page { position: relative; flex: none; margin: 0 auto; background: #fff; box-shadow: var(--paper-shadow); }
+.pdf-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.textLayer {
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  color-scheme: only light;
+}
+.textLayer :is(span, br) { position: absolute; color: transparent; white-space: pre; cursor: text; transform-origin: 0 0; user-select: text; }
+.textLayer > :not(.markedContent), .textLayer .markedContent span:not(.markedContent) {
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.textLayer .markedContent { display: contents; }
+.textLayer span[role='img'] { user-select: none; cursor: default; }
+.textLayer ::selection { background: rgba(0, 100, 255, 0.28); color: transparent; }
+.textLayer br::selection { background: transparent; }
+.textLayer .pdf-hit { background: rgba(255, 220, 0, 0.45); border-radius: 2px; }
+.textLayer .pdf-hit-cur { background: rgba(255, 140, 0, 0.55); border-radius: 2px; }
+.pdf-pager {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  color: var(--text-gray);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  transform: translateX(-50%);
+  opacity: 0.85;
+}
+.pdf-pager:hover, .pdf-pager:focus-within { opacity: 1; }
+.pdf-pager-input { width: 3.2em; padding: 1px 4px; border: none; border-radius: 6px; outline: none; background: none; color: var(--text); font: inherit; text-align: right; }
+.pdf-pager-input:focus { background: var(--primary-alpha); }
+
 /* ---------- 表格 ---------- */
 .sheet-view { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--grid-bg); }
 .sheet-bar {
@@ -611,15 +680,55 @@ section.docx p { min-height: 1lh; }
   align-items: center;
   gap: 12px;
   height: 48px;
-  padding: 0 200px 0 56px; /* 两侧留出悬浮按钮的位置 */
+  padding: 0 232px 0 56px; /* 两侧留出悬浮按钮的位置 */
   border-bottom: 1px solid var(--grid-line);
   font-size: 13px;
 }
 .cell-ref { flex: none; min-width: 52px; padding: 2px 8px; border-radius: 6px; background: var(--primary-alpha); color: var(--primary); text-align: center; font-variant-numeric: tabular-nums; }
 .cell-value { flex: 1; min-width: 0; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: text; }
+.filter-stat { flex: none; color: var(--text-gray); font-size: 12.5px; }
+.filter-stat[hidden], .filter-clear[hidden] { display: none; }
+.filter-clear { flex: none; padding: 2px 8px; border: none; border-radius: 6px; background: var(--primary-alpha); color: var(--primary); font-size: 12.5px; cursor: pointer; }
+.filter-clear:hover { background: var(--btn-bg-active); }
 .sheet-grid { position: relative; flex: 1; min-height: 0; }
 .sheet-grid canvas { position: absolute; left: 0; top: 0; }
 .sheet-scroll { position: absolute; inset: 0; overflow: auto; outline: none; }
+
+/* 列筛选菜单，见 sheet-filter.ts */
+.filter-menu {
+  position: absolute;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 248px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 13px;
+}
+.filter-title { color: var(--text-gray); font-size: 12px; }
+.filter-search { box-sizing: border-box; width: 100%; height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; outline: none; background: none; color: var(--text); font-size: 13px; }
+.filter-search:focus { border-color: var(--primary); }
+.filter-ops { display: flex; align-items: center; gap: 12px; font-size: 12.5px; }
+.filter-link { padding: 0; border: none; background: none; color: var(--primary); font-size: inherit; cursor: pointer; }
+.filter-count { margin-left: auto; color: var(--text-gray); font-variant-numeric: tabular-nums; }
+.filter-list { max-height: 260px; overflow: auto; margin: 0 -4px; }
+.filter-item { display: flex; align-items: center; gap: 8px; padding: 4px; border-radius: 6px; cursor: pointer; }
+.filter-item:hover { background: var(--btn-bg-hover); }
+.filter-item input { flex: none; margin: 0; accent-color: var(--primary); }
+.filter-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filter-blank { color: var(--text-gray); }
+.filter-n { flex: none; color: var(--text-gray); font-size: 12px; font-variant-numeric: tabular-nums; }
+.filter-more { padding: 6px 4px; color: var(--text-gray); font-size: 12px; }
+.filter-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.filter-btn { padding: 4px 14px; border: 1px solid var(--border); border-radius: 8px; background: none; color: var(--text); font-size: 13px; cursor: pointer; }
+.filter-btn:hover { background: var(--btn-bg-hover); }
+.filter-ok { border-color: var(--primary); background: var(--primary); color: #fff; }
+.filter-ok:hover { background: var(--primary-hover); }
 
 .search-panel {
   position: absolute;

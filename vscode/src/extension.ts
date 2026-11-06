@@ -1,15 +1,16 @@
-// VS Code 插件：把 Word、表格、演示文稿、电子书、Markdown、CSV 和 flac 音频用素阅的界面打开。
+// VS Code 插件：把 Word、表格、演示文稿、PDF、电子书、Markdown、CSV 和 flac 音频用素阅的界面打开。
 // 扩展这边只负责读文件、存阅读位置和打开链接，渲染全在 webview 里，和网页版共用代码。
 import * as vscode from 'vscode';
 
-// Word、表格、演示文稿、电子书默认用素阅打开；Markdown、CSV 是文本，默认仍是文本编辑器，素阅作为可选的打开方式。
+// Word、表格、演示文稿、PDF、电子书默认用素阅打开；Markdown、CSV 是文本，默认仍是文本编辑器，素阅作为可选的打开方式。
 // 音频里 VS Code 自带预览能放的（mp3、wav、ogg）只作为可选。m4a、aac、opus 不接管：VS Code 内置的解码器没有这几种。
-// 表格画在 Canvas 上，浏览器的查找搜不到，用自带搜索，所以不开 VS Code 的查找框
+// 表格画在 Canvas 上、PDF 只绘制可见页，浏览器的查找搜不全，用自带搜索，所以不开 VS Code 的查找框
 const VIEW_TYPES: Record<string, { find: boolean }> = {
   'suyue.word': { find: true },
   'suyue.sheet': { find: false },
   'suyue.slides': { find: true },
   'suyue.epub': { find: true },
+  'suyue.pdf': { find: false },
   'suyue.markdown': { find: true },
   'suyue.csv': { find: false },
   'suyue.audio': { find: false },
@@ -129,7 +130,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider {
       `media-src ${webview.cspSource} blob: data: https:`,
       `style-src ${webview.cspSource} 'unsafe-inline'`,
       `font-src ${webview.cspSource} blob: data:`,
-      `script-src ${webview.cspSource}`,
+      `script-src ${webview.cspSource} 'wasm-unsafe-eval'`, // pdf.js 用 wasm 解码部分图片
       'worker-src blob:',
       `connect-src ${webview.cspSource}`,
     ].join('; ');

@@ -1,5 +1,6 @@
 import { icon } from '../icons';
 import { cssVar, el } from '../ui';
+import { showFilterMenu } from './sheet-filter';
 import type { CellRange, SheetData, SheetWorkerResponse } from './sheet-types';
 import workerUrl from '../workers/sheet.worker.ts?worker&url';
 import type { Renderer } from './types';
@@ -17,6 +18,34 @@ const isNumeric = (t: string) => NUM_RE.test(t) && !/^0\d/.test(t) && !/\d{16}/.
 /** 数据区外额外显示的空白行列，观感接近 Excel */
 const EXTRA_ROWS = 30;
 const EXTRA_COLS = 5;
+/** 列头右侧筛选按钮的宽度 */
+const FUN_W = 20;
+const collator = new Intl.Collator('zh-CN', { numeric: true });
+
+/** 一张表的筛选状态：header 行以下的行按各列允许的值显示 */
+interface Filter {
+  header: number;
+  cols: Map<number, Set<string>>;
+}
+
+/** 单元格里有制表符、换行或引号时按 Excel 的规则加引号，粘贴回 Excel 时才不会错位 */
+const quoteCell = (t: string) => (/[\t\r\n"]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t);
+
+async function writeClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return;
+  } catch {
+    /* 没有剪贴板权限时退回 execCommand */
+  }
+  const area = el('textarea');
+  area.value = text;
+  area.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+  document.body.append(area);
+  area.select();
+  document.execCommand('copy');
+  area.remove();
+}
 
 async function createWorker(): Promise<Worker> {
   try {
@@ -84,12 +113,26 @@ class Grid {
   private rowNumW = 40;
   /** 被合并覆盖的单元格 → 所属合并区域 */
   private covered = new Map<number, CellRange>();
+  /** 当前单元格（选区的起点）和选区的另一端 */
   private sel = { r: 0, c: 0 };
+  private end = { r: 0, c: 0 };
   private hit = false;
+  private drag: 'cell' | 'row' | 'col' | null = null;
+  private pointer = { x: 0, y: 0 };
+  private dragRaf = 0;
+  private dataCols = 0;
+  /** 被筛选隐藏的行 */
+  private hidden = new Uint8Array(0);
+  private filters = new Map<SheetData, Filter>();
+  private f: Filter | null = null;
   /** 缩放系数：内部一律使用未缩放的逻辑坐标，只在绘制、滚动和鼠标换算时乘除 z */
   private z = 1;
 
   onSelect: (ref: string, value: string) => void = () => {};
+  onCopy: (rows: number, cols: number) => void = () => {};
+  /** x、y 为列头下方的位置（相对表格区域左上角的像素） */
+  onFilterClick: (col: number, x: number, y: number) => void = () => {};
+  onFilterChange: (visible: number, total: number, active: boolean) => void = () => {};
 
   constructor(private scroller: HTMLElement, gridBox: HTMLElement) {
     gridBox.append(this.canvas, scroller);
@@ -98,11 +141,12 @@ class Grid {
     scroller.addEventListener('scroll', this.schedule);
     scroller.addEventListener('mousedown', this.onMouseDown);
     scroller.addEventListener('keydown', this.onKeyDown);
+    scroller.addEventListener('copy', this.onCopyEvent);
     this.readColors();
   }
 
   readColors() {
-    for (const k of ['grid-bg', 'grid-line', 'grid-head', 'grid-head-text', 'grid-text', 'accent', 'accent-soft', 'grid-hit']) {
+    for (const k of ['grid-bg', 'grid-line', 'grid-head', 'grid-head-text', 'grid-text', 'accent', 'accent-soft', 'grid-hit', 'grid-range']) {
       this.colors[k] = cssVar(`--${k}`);
     }
     this.schedule();
@@ -110,11 +154,12 @@ class Grid {
 
   setSheet(sheet: SheetData) {
     this.sheet = sheet;
-    const dataCols = sheet.rows.reduce((m, row) => Math.max(m, row.length), 0);
+    this.dataCols = sheet.rows.reduce((m, row) => Math.max(m, row.length), 0);
     this.nRows = sheet.rows.length + EXTRA_ROWS;
-    this.nCols = Math.max(dataCols + EXTRA_COLS, 26);
+    this.nCols = Math.max(this.dataCols + EXTRA_COLS, 26);
     this.colX = prefixSums(this.nCols, (c) => sheet.colWidths[c] ?? COL_W);
-    this.rowY = prefixSums(this.nRows, (r) => sheet.rowHeights[r] ?? ROW_H);
+    this.f = this.filters.get(sheet) ?? null;
+    this.buildRows();
     this.ctx.font = HEAD_FONT;
     this.rowNumW = Math.max(40, Math.ceil(this.ctx.measureText(String(this.nRows)).width) + 18);
 
@@ -127,6 +172,81 @@ class Grid {
     this.sizeSpacer();
     this.scroller.scrollTo(0, 0);
     this.select(0, 0);
+    this.reportFilter();
+  }
+
+  // ---------- 筛选 ----------
+  private buildRows() {
+    const s = this.sheet;
+    this.hidden = new Uint8Array(s.rows.length);
+    if (this.f) for (let r = this.f.header + 1; r < s.rows.length; r++) if (!this.passes(r, -1)) this.hidden[r] = 1;
+    this.rowY = prefixSums(this.nRows, (r) => (this.hidden[r] ? 0 : (s.rowHeights[r] ?? ROW_H)));
+  }
+
+  /** 第 r 行是否满足除 except 列以外的所有筛选条件 */
+  private passes(r: number, except: number): boolean {
+    const row = this.sheet.rows[r];
+    for (const [c, allowed] of this.f!.cols) if (c !== except && !allowed.has(row?.[c] ?? '')) return false;
+    return true;
+  }
+
+  private reportFilter() {
+    const f = this.f;
+    const total = f ? Math.max(0, this.sheet.rows.length - 1 - f.header) : 0;
+    let shown = total;
+    for (const h of this.hidden) shown -= h;
+    this.onFilterChange(shown, total, !!f && f.cols.size > 0);
+  }
+
+  private applyFilter() {
+    this.buildRows();
+    this.sizeSpacer();
+    this.reportFilter();
+    this.schedule();
+  }
+
+  get filtering() {
+    return !!this.f;
+  }
+
+  /** 开启筛选：以当前选中的行作为表头；再次调用则关闭并显示全部行 */
+  toggleFilter(): boolean {
+    if (this.f) {
+      this.filters.delete(this.sheet);
+      this.f = null;
+    } else {
+      if (!this.sheet.rows.length) return false;
+      this.f = { header: Math.min(this.sel.r, this.sheet.rows.length - 1), cols: new Map() };
+      this.filters.set(this.sheet, this.f);
+    }
+    this.applyFilter();
+    return !!this.f;
+  }
+
+  clearFilters() {
+    if (!this.f?.cols.size) return;
+    this.f.cols.clear();
+    this.applyFilter();
+  }
+
+  /** 第 c 列可选的值：只统计满足其他列筛选条件的行，和 Excel 一样逐层缩小 */
+  columnValues(c: number): { values: [string, number][]; allowed: Set<string> | null } {
+    const f = this.f!;
+    const counts = new Map<string, number>();
+    for (let r = f.header + 1; r < this.sheet.rows.length; r++) {
+      if (!this.passes(r, c)) continue;
+      const v = this.sheet.rows[r]?.[c] ?? '';
+      counts.set(v, (counts.get(v) ?? 0) + 1);
+    }
+    const values = [...counts].sort((a, b) => (a[0] === '' ? -1 : b[0] === '' ? 1 : collator.compare(a[0], b[0])));
+    return { values, allowed: f.cols.get(c) ?? null };
+  }
+
+  setColumnFilter(c: number, allowed: Set<string> | null) {
+    if (!this.f) return;
+    if (allowed) this.f.cols.set(c, allowed);
+    else this.f.cols.delete(c);
+    this.applyFilter();
   }
 
   private sizeSpacer() {
@@ -168,20 +288,98 @@ class Grid {
 
   destroy() {
     cancelAnimationFrame(this.raf);
+    cancelAnimationFrame(this.dragRaf);
+    this.onMouseUp();
   }
 
   // ---------- 选择与导航 ----------
+  private clampCell(r: number, c: number) {
+    return { r: Math.max(0, Math.min(r, this.nRows - 1)), c: Math.max(0, Math.min(c, this.nCols - 1)) };
+  }
+
   select(r: number, c: number, fromSearch = false) {
-    r = Math.max(0, Math.min(r, this.nRows - 1));
-    c = Math.max(0, Math.min(c, this.nCols - 1));
+    ({ r, c } = this.clampCell(r, c));
     const m = this.covered.get(this.key(r, c));
     if (m) ({ r, c } = m.s);
     this.sel = { r, c };
+    this.end = { r, c };
     this.hit = fromSearch;
-    this.onSelect(`${colName(c)}${r + 1}`, this.text(r, c));
+    this.notify();
     this.ensureVisible(r, c);
     this.schedule();
   }
+
+  /** 把选区的另一端移到 (r, c)，起点不变 */
+  extend(r: number, c: number) {
+    this.end = this.clampCell(r, c);
+    this.hit = false;
+    this.notify();
+    this.ensureVisible(this.end.r, this.end.c);
+    this.schedule();
+  }
+
+  private setRange(from: { r: number; c: number }, to: { r: number; c: number }) {
+    this.sel = from;
+    this.end = to;
+    this.hit = false;
+    this.notify();
+    this.schedule();
+  }
+
+  selectAll() {
+    this.setRange({ r: 0, c: 0 }, { r: Math.max(0, this.sheet.rows.length - 1), c: Math.max(0, this.dataCols - 1) });
+  }
+
+  private bounds() {
+    const { sel, end } = this;
+    return { r0: Math.min(sel.r, end.r), r1: Math.max(sel.r, end.r), c0: Math.min(sel.c, end.c), c1: Math.max(sel.c, end.c) };
+  }
+
+  private notify() {
+    const { r0, r1, c0, c1 } = this.bounds();
+    const cell = (r: number, c: number) => `${colName(c)}${r + 1}`;
+    let ref = cell(r0, c0);
+    if (r0 !== r1 || c0 !== c1) {
+      if (r0 === 0 && r1 === this.nRows - 1) ref = `${colName(c0)}:${colName(c1)}`;
+      else if (c0 === 0 && c1 === this.nCols - 1) ref = `${r0 + 1}:${r1 + 1}`;
+      else ref = `${ref}:${cell(r1, c1)}`;
+    }
+    this.onSelect(ref, this.text(this.sel.r, this.sel.c));
+  }
+
+  // ---------- 复制 ----------
+  /** 选区文本：制表符分隔列、换行分隔行，跳过被隐藏或筛掉的行列，范围超出数据时只取有数据的部分 */
+  private selectionText(): { text: string; rows: number; cols: number } {
+    const { r0, c0 } = this.bounds();
+    let { r1, c1 } = this.bounds();
+    if (r0 === r1 && c0 === c1) return { text: this.text(r0, c0), rows: 1, cols: 1 };
+    r1 = Math.min(r1, this.sheet.rows.length - 1);
+    c1 = Math.min(c1, this.dataCols - 1);
+    const cols: number[] = [];
+    for (let c = c0; c <= c1; c++) if (this.colX[c + 1] > this.colX[c]) cols.push(c);
+    const lines: string[] = [];
+    for (let r = r0; r <= r1; r++) {
+      if (this.rowY[r + 1] === this.rowY[r]) continue;
+      lines.push(cols.map((c) => quoteCell(this.text(r, c))).join('\t'));
+    }
+    return { text: lines.join('\n'), rows: lines.length, cols: cols.length };
+  }
+
+  async copy() {
+    const { text, rows, cols } = this.selectionText();
+    if (!rows || !cols) return;
+    await writeClipboard(text);
+    this.onCopy(rows, cols);
+  }
+
+  // 浏览器菜单里的“复制”走这里；快捷键由 onKeyDown 处理
+  private onCopyEvent = (e: ClipboardEvent) => {
+    const { text, rows, cols } = this.selectionText();
+    if (!rows || !cols) return;
+    e.clipboardData?.setData('text/plain', text);
+    e.preventDefault();
+    this.onCopy(rows, cols);
+  };
 
   private ensureVisible(r: number, c: number) {
     const s = this.scroller;
@@ -199,17 +397,83 @@ class Grid {
     else if (right > sx + viewW) s.scrollLeft = Math.min(left, right - viewW) * z;
   }
 
+  // ---------- 鼠标 ----------
+  /** 指针下的区域和行列；clamp 为真时把指针限制在单元格区域内（拖选出界时用） */
+  private locate(clientX: number, clientY: number, clamp = false) {
+    const s = this.scroller;
+    const rect = s.getBoundingClientRect();
+    let px = (clientX - rect.left) / this.z;
+    let py = (clientY - rect.top) / this.z;
+    if (clamp) {
+      px = Math.min(Math.max(px, this.rowNumW), s.clientWidth / this.z - 1);
+      py = Math.min(Math.max(py, HEAD_H), s.clientHeight / this.z - 1);
+    }
+    const zone: 'corner' | 'row' | 'col' | 'cell' = px < this.rowNumW ? (py < HEAD_H ? 'corner' : 'row') : py < HEAD_H ? 'col' : 'cell';
+    const c = indexAt(this.colX, Math.max(0, px - this.rowNumW) + s.scrollLeft / this.z);
+    const r = indexAt(this.rowY, Math.max(0, py - HEAD_H) + s.scrollTop / this.z);
+    return { zone, r, c, px };
+  }
+
   private onMouseDown = (e: MouseEvent) => {
+    if (e.button !== 0) return;
     const rect = this.scroller.getBoundingClientRect();
     if (e.clientX - rect.left > this.scroller.clientWidth || e.clientY - rect.top > this.scroller.clientHeight) return; // 点在滚动条上
-    const px = (e.clientX - rect.left) / this.z;
-    const py = (e.clientY - rect.top) / this.z;
-    if (px < this.rowNumW || py < HEAD_H) return;
-    const c = indexAt(this.colX, px - this.rowNumW + this.scroller.scrollLeft / this.z);
-    const r = indexAt(this.rowY, py - HEAD_H + this.scroller.scrollTop / this.z);
-    this.select(r, c);
+    const { zone, r, c, px } = this.locate(e.clientX, e.clientY);
+    e.preventDefault(); // 不让拖动变成页面文字选择
+    this.scroller.focus({ preventScroll: true });
+
+    if (zone === 'col' && this.f && c < this.dataCols && this.colX[c + 1] > this.colX[c]) {
+      const sx = this.scroller.scrollLeft / this.z;
+      if (px >= this.rowNumW + this.colX[c + 1] - sx - FUN_W) {
+        this.onFilterClick(c, (this.rowNumW + this.colX[c] - sx) * this.z, (HEAD_H + 2) * this.z);
+        return;
+      }
+    }
+    if (zone === 'corner') return this.selectAll();
+    if (zone === 'col') this.setRange({ r: 0, c }, { r: this.nRows - 1, c });
+    else if (zone === 'row') this.setRange({ r, c: 0 }, { r, c: this.nCols - 1 });
+    else if (e.shiftKey) this.extend(r, c);
+    else this.select(r, c);
+    this.drag = zone;
+    this.pointer = { x: e.clientX, y: e.clientY };
+    window.addEventListener('mousemove', this.onMouseMove);
+    window.addEventListener('mouseup', this.onMouseUp);
   };
 
+  private onMouseMove = (e: MouseEvent) => {
+    this.pointer = { x: e.clientX, y: e.clientY };
+    if (!this.dragRaf) this.dragRaf = requestAnimationFrame(this.dragTick);
+  };
+
+  private onMouseUp = () => {
+    this.drag = null;
+    window.removeEventListener('mousemove', this.onMouseMove);
+    window.removeEventListener('mouseup', this.onMouseUp);
+  };
+
+  /** 拖选：按指针位置延伸选区；指针拖到表格外时自动滚动 */
+  private dragTick = () => {
+    this.dragRaf = 0;
+    if (!this.drag) return;
+    const s = this.scroller;
+    const rect = s.getBoundingClientRect();
+    const over = (v: number, lo: number, hi: number) => (v < lo ? v - lo : v > hi ? v - hi : 0);
+    const dx = this.drag === 'row' ? 0 : over(this.pointer.x, rect.left + this.rowNumW * this.z, rect.left + s.clientWidth);
+    const dy = this.drag === 'col' ? 0 : over(this.pointer.y, rect.top + HEAD_H * this.z, rect.top + s.clientHeight);
+    s.scrollLeft += Math.max(-40, Math.min(40, dx));
+    s.scrollTop += Math.max(-40, Math.min(40, dy));
+    const { r, c } = this.locate(this.pointer.x, this.pointer.y, true);
+    if (this.drag === 'col') this.setRange(this.sel, { r: this.nRows - 1, c });
+    else if (this.drag === 'row') this.setRange(this.sel, { r, c: this.nCols - 1 });
+    else {
+      this.end = { r, c };
+      this.notify();
+      this.schedule();
+    }
+    if (dx || dy) this.dragRaf = requestAnimationFrame(this.dragTick);
+  };
+
+  // ---------- 键盘 ----------
   private step(pre: Float64Array, from: number, dir: number, max: number) {
     let i = from + dir;
     while (i >= 0 && i < max && pre[i + 1] === pre[i]) i += dir; // 跳过隐藏行列
@@ -221,9 +485,28 @@ class Grid {
     const m = this.covered.get(this.key(r, c));
     const endR = m?.e.r ?? r;
     const endC = m?.e.c ?? c;
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
-      navigator.clipboard?.writeText(this.text(r, c));
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key.toLowerCase() === 'c') {
       e.preventDefault();
+      void this.copy();
+      return;
+    }
+    if (mod && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      this.selectAll();
+      return;
+    }
+    if (e.key === 'Escape' && (this.end.r !== r || this.end.c !== c)) {
+      this.select(r, c);
+      return;
+    }
+    if (e.shiftKey && e.key.startsWith('Arrow')) {
+      e.preventDefault();
+      const { r: er, c: ec } = this.end;
+      if (e.key === 'ArrowUp') this.extend(this.step(this.rowY, er, -1, this.nRows), ec);
+      else if (e.key === 'ArrowDown') this.extend(this.step(this.rowY, er, 1, this.nRows), ec);
+      else if (e.key === 'ArrowLeft') this.extend(er, this.step(this.colX, ec, -1, this.nCols));
+      else this.extend(er, this.step(this.colX, ec, 1, this.nCols));
       return;
     }
     const moves: Record<string, () => void> = {
@@ -254,8 +537,8 @@ class Grid {
       pos = (pos + (backward ? -1 : 1) + total) % total;
       const r = Math.floor(pos / cols);
       const row = rows[r];
-      if (!row || !row.length) {
-        // 整行为空时直接跳过这一行
+      if (!row || !row.length || this.hidden[r]) {
+        // 整行为空或被筛选隐藏时直接跳过这一行
         pos = backward ? r * cols : r * cols + cols - 1;
         continue;
       }
@@ -305,6 +588,12 @@ class Grid {
     ctx.rect(RW, HEAD_H, w - RW, h - HEAD_H);
     ctx.clip();
 
+    // 筛选的表头行用表头底色，和数据行区分开
+    if (this.f && this.f.header >= r0 && this.f.header <= r1) {
+      ctx.fillStyle = k['grid-head'];
+      ctx.fillRect(RW, Y(this.f.header), w - RW, rowY[this.f.header + 1] - rowY[this.f.header]);
+    }
+
     // 网格线
     ctx.strokeStyle = k['grid-line'];
     ctx.lineWidth = 1 / this.z;
@@ -321,17 +610,22 @@ class Grid {
     }
     ctx.stroke();
 
-    // 搜索命中高亮
+    // 当前单元格和选区；搜索命中时把当前单元格涂黄
     const selM = this.covered.get(this.key(this.sel.r, this.sel.c));
-    const selRect = {
+    const cell = {
       x: X(this.sel.c),
       y: Y(this.sel.r),
       w: colX[(selM?.e.c ?? this.sel.c) + 1] - colX[this.sel.c],
       h: rowY[(selM?.e.r ?? this.sel.r) + 1] - rowY[this.sel.r],
     };
+    const b = this.bounds();
+    const multi = b.r0 !== b.r1 || b.c0 !== b.c1;
+    const selRect = multi
+      ? { x: X(b.c0), y: Y(b.r0), w: colX[b.c1 + 1] - colX[b.c0], h: rowY[b.r1 + 1] - rowY[b.r0] }
+      : cell;
     if (this.hit) {
       ctx.fillStyle = k['grid-hit'];
-      ctx.fillRect(selRect.x, selRect.y, selRect.w, selRect.h);
+      ctx.fillRect(cell.x, cell.y, cell.w, cell.h);
     }
 
     ctx.font = FONT;
@@ -383,13 +677,20 @@ class Grid {
     }
     ctx.restore();
 
-    // 选中框
+    // 选中框；选区半透明盖在文字上，当前单元格挖空保持原样
     ctx.strokeStyle = k.accent;
     ctx.lineWidth = 2 / this.z;
     ctx.save();
     ctx.beginPath();
     ctx.rect(RW, HEAD_H, w - RW, h - HEAD_H);
     ctx.clip();
+    if (multi) {
+      ctx.fillStyle = k['grid-range'];
+      ctx.beginPath();
+      ctx.rect(selRect.x, selRect.y, selRect.w, selRect.h);
+      ctx.rect(cell.x, cell.y, cell.w, cell.h);
+      ctx.fill('evenodd');
+    }
     ctx.strokeRect(selRect.x, selRect.y, selRect.w - 1, selRect.h - 1);
     ctx.restore();
 
@@ -448,12 +749,35 @@ class Grid {
     ctx.beginPath();
     for (let c = c0; c <= c1; c++) {
       const cw = colX[c + 1] - colX[c];
-      if (cw) ctx.fillText(colName(c), X(c) + cw / 2, HEAD_H / 2);
+      const room = this.f && c < this.dataCols ? FUN_W : 0; // 筛选按钮占掉右侧一块
+      if (cw) ctx.fillText(colName(c), X(c) + (cw - room) / 2, HEAD_H / 2);
       const x = Math.round(X(c + 1)) - 0.5;
       ctx.moveTo(x, 0);
       ctx.lineTo(x, HEAD_H);
     }
     ctx.stroke();
+    if (this.f) {
+      for (let c = c0; c <= c1 && c < this.dataCols; c++) {
+        if (colX[c + 1] === colX[c]) continue;
+        const on = this.f.cols.has(c);
+        const cx = X(c + 1) - FUN_W / 2;
+        const cy = HEAD_H / 2;
+        if (on) {
+          ctx.fillStyle = k['accent-soft'];
+          ctx.fillRect(cx - FUN_W / 2 + 1, 3, FUN_W - 2, HEAD_H - 6);
+        }
+        ctx.fillStyle = on ? k.accent : k['grid-head-text'];
+        ctx.beginPath();
+        ctx.moveTo(cx - 4.5, cy - 3.5);
+        ctx.lineTo(cx + 4.5, cy - 3.5);
+        ctx.lineTo(cx + 0.9, cy + 0.5);
+        ctx.lineTo(cx + 0.9, cy + 4);
+        ctx.lineTo(cx - 0.9, cy + 3);
+        ctx.lineTo(cx - 0.9, cy + 0.5);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
     ctx.restore();
 
     ctx.save();
@@ -489,7 +813,10 @@ export const renderSheet: Renderer = async (data, { host, shell, name, saved }) 
   const bar = el('div', 'sheet-bar');
   const ref = el('div', 'cell-ref');
   const value = el('div', 'cell-value');
-  bar.append(ref, value);
+  const filterStat = el('span', 'filter-stat');
+  const filterClear = el('button', 'filter-clear', '清除筛选');
+  filterStat.hidden = filterClear.hidden = true;
+  bar.append(ref, value, filterStat, filterClear);
 
   // 搜索面板：画布上的内容浏览器自带的查找搜不到，所以自己做
   const panel = el('div', 'search-panel');
@@ -514,6 +841,38 @@ export const renderSheet: Renderer = async (data, { host, shell, name, saved }) 
     value.title = v;
   };
 
+  grid.onCopy = (rows, cols) => shell.hud(rows === 1 && cols === 1 ? '已复制' : `已复制 ${rows} 行 × ${cols} 列`);
+  grid.onFilterChange = (shown, total, active) => {
+    filterStat.hidden = !grid.filtering;
+    filterStat.textContent = active ? `显示 ${shown.toLocaleString()} / ${total.toLocaleString()} 行` : '点列头右侧的漏斗图标筛选';
+    filterClear.hidden = !active;
+  };
+  filterClear.addEventListener('click', () => {
+    grid.clearFilters();
+    scroller.focus({ preventScroll: true });
+  });
+  let closeMenu: (() => void) | null = null;
+  grid.onFilterClick = (col, x, y) => {
+    closeMenu?.();
+    const { values, allowed } = grid.columnValues(col);
+    closeMenu = showFilterMenu(gridBox, x, y, {
+      title: `${colName(col)} 列`,
+      values,
+      allowed,
+      onApply: (set) => grid.setColumnFilter(col, set),
+      onClose: () => {
+        closeMenu = null;
+        scroller.focus({ preventScroll: true });
+      },
+    });
+  };
+  function toggleFilter() {
+    closeMenu?.();
+    const on = grid.toggleFilter();
+    shell.hud(on ? '筛选已开启：点列头右侧的漏斗图标' : '筛选已关闭');
+    scroller.focus({ preventScroll: true });
+  }
+
   let current = 0;
   const colsOf = (s: SheetData) => s.rows.reduce((m, row) => Math.max(m, row.length), 0);
   shell.setOutline(
@@ -521,6 +880,7 @@ export const renderSheet: Renderer = async (data, { host, shell, name, saved }) 
     (id) => show(Number(id)),
   );
   function show(i: number) {
+    closeMenu?.();
     current = i;
     shell.setActive(String(i));
     findStatus.textContent = '';
@@ -538,7 +898,17 @@ export const renderSheet: Renderer = async (data, { host, shell, name, saved }) 
     findStatus.textContent = '';
     scroller.focus({ preventScroll: true });
   }
-  shell.setActions([{ icon: 'search', title: '搜索 (⌘/Ctrl + F)', run: openSearch }]);
+  shell.setActions([
+    { icon: 'search', title: '搜索 (⌘/Ctrl + F)', run: openSearch },
+    { icon: 'filter', title: '筛选 (⌘/Ctrl + Shift + L)：以当前行为表头', run: toggleFilter },
+    { icon: 'copy', title: '复制选区 (⌘/Ctrl + C)', run: () => void grid.copy() },
+  ]);
+  scroller.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
+      e.preventDefault();
+      toggleFilter();
+    }
+  });
   closeBtn.addEventListener('click', closeSearch);
   search.addEventListener('input', () => (findStatus.textContent = ''));
   search.addEventListener('keydown', (e) => {
@@ -563,6 +933,7 @@ export const renderSheet: Renderer = async (data, { host, shell, name, saved }) 
     state: () => ({ sheet: current, cell: grid.selection, zoom: grid.zoom, sx: scroller.scrollLeft, sy: scroller.scrollTop }),
     onTheme: () => grid.readColors(),
     destroy() {
+      closeMenu?.();
       ro.disconnect();
       grid.destroy();
     },

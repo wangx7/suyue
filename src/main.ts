@@ -12,7 +12,6 @@ const APP_NAME = '素阅';
 // 浏览器自己能显示的格式，交给新标签页；xml、json 按纯文本显示
 const TEXT = 'text/plain;charset=utf-8';
 const BROWSER_TYPES: Record<string, string> = {
-  pdf: 'application/pdf',
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp', ico: 'image/x-icon',
   mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', ogv: 'video/ogg',
   mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', flac: 'audio/flac',
@@ -33,6 +32,7 @@ const ACCEPT: Record<string, string[]> = {
   'application/vnd.openxmlformats-officedocument.presentationml.slideshow': ['.ppsx', '.ppsm'],
   'application/vnd.openxmlformats-officedocument.presentationml.template': ['.potx'],
   'application/epub+zip': ['.epub'],
+  'application/pdf': ['.pdf'],
 };
 const isExtension = typeof chrome !== 'undefined' && !!chrome.runtime?.id;
 
@@ -64,7 +64,6 @@ function browserType(name: string, buf: ArrayBuffer): string | null {
   if (known) return known;
   const b = new Uint8Array(buf, 0, Math.min(12, buf.byteLength));
   const head = String.fromCharCode(...b);
-  if (head.startsWith('%PDF')) return 'application/pdf';
   if (b[0] === 0x89 && head.slice(1, 4) === 'PNG') return 'image/png';
   if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
   if (head.startsWith('GIF8')) return 'image/gif';
@@ -214,7 +213,7 @@ async function openBuffer(buf: ArrayBuffer, name: string, key: string, { recent 
   const kind = detect(name, buf);
   const type = kind ? null : browserType(name, buf);
   if (type) return openInTab(recent.url ?? blobHref(buf, type, name), name);
-  if (!kind) return showError('暂不支持这个文件', `无法识别「${name}」的格式。支持 Word、Excel、PPT、EPUB 电子书、CSV 和 Markdown。`);
+  if (!kind) return showError('暂不支持这个文件', `无法识别「${name}」的格式。支持 Word、Excel、PPT、PDF、EPUB 电子书、CSV 和 Markdown。`);
 
   const size = buf.byteLength; // 表格解析时 buf 会转交给 Worker，先记下大小
   shell.setDoc(name, `${KIND_LABEL[kind]} · ${sizeText(size)}`);
@@ -253,7 +252,7 @@ async function openFile(file: File, handle?: FileSystemFileHandle, replaces?: st
 async function pickFile() {
   if (!window.showOpenFilePicker) return fileInput.click();
   try {
-    const [handle] = await window.showOpenFilePicker({ types: [{ description: 'Word / Excel / PPT / EPUB / CSV / Markdown', accept: ACCEPT }] });
+    const [handle] = await window.showOpenFilePicker({ types: [{ description: 'Word / Excel / PPT / PDF / EPUB / CSV / Markdown', accept: ACCEPT }] });
     await openFile(await handle.getFile(), handle);
   } catch (err) {
     if ((err as DOMException).name !== 'AbortError') fileInput.click();
@@ -336,7 +335,7 @@ async function openUrl(rawUrl: string) {
   } catch {
     return showError('链接无效', rawUrl);
   }
-  // 从扩展名就能看出是 PDF、图片这类，不必先下载
+  // 从扩展名就能看出是图片、音视频这类，不必先下载
   const urlName = nameFromUrl(url, null);
   if (extOf(urlName) in BROWSER_TYPES) return openInTab(url, urlName);
   clearStage();

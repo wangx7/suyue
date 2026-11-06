@@ -9,6 +9,9 @@ export interface ReadState {
   cell?: [number, number];
   sx?: number;
   sy?: number;
+  /** PDF：页码（从 1 起）和页内偏移（缩放 1 时的像素） */
+  page?: number;
+  pageY?: number;
   /** 音频播放位置（秒） */
   time?: number;
 }
@@ -56,7 +59,7 @@ export function saveState(key: string, state: ReadState) {
 export interface RecentItem {
   id: string;
   name: string;
-  kind: 'docx' | 'doc' | 'sheet' | 'md' | 'pptx' | 'epub';
+  kind: 'docx' | 'doc' | 'sheet' | 'md' | 'pptx' | 'epub' | 'pdf';
   size?: number;
   time: number;
   url?: string;

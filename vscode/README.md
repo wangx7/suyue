@@ -1,6 +1,6 @@
 # 素阅 · 文档阅读器
 
-在 VS Code 里安静地阅读 Word、Excel、PPT、EPUB 电子书、CSV 和 Markdown，也能播放 flac 音频。文件在本地解析，不上传；跟随 VS Code 的深浅色主题。
+在 VS Code 里安静地阅读 Word、Excel、PPT、PDF、EPUB 电子书、CSV 和 Markdown，也能播放 flac 音频。文件在本地解析，不上传；跟随 VS Code 的深浅色主题。
 
 ![Markdown](https://raw.githubusercontent.com/wangx7/suyue/main/store/screenshots/md-light.png)
 
@@ -13,6 +13,7 @@
 | Word：.docx、.doc | 直接点开 |
 | 表格：.xlsx、.xlsm、.xlsb、.xls、.ods | 直接点开 |
 | 演示文稿：.pptx、.ppsx、.potx 等 | 直接点开 |
+| PDF：.pdf | 直接点开 |
 | 电子书：.epub | 直接点开 |
 | 音频：.flac | 直接点开 |
 | 音频：.mp3、.wav、.ogg | 默认是 VS Code 自带预览；右键 →“用素阅打开”或预览右上角的书本图标 |
@@ -26,6 +27,8 @@ Markdown 和 CSV 默认仍用文本编辑器打开。想一直用素阅，可以
 - 左侧自动生成目录：Word 按标题样式，Markdown 按 `#` 标题，表格按工作表，演示文稿按每页标题，电子书用书自带的目录
 - Word 有阅读视图和页面视图，深色下文档颜色自动调整
 - 表格用 Canvas 绘制，几十万行也能流畅滚动；⌘/Ctrl + F 在表格里搜索
+- 表格可拖选区域并复制（⌘/Ctrl + C，直接粘贴进 Excel），⌘/Ctrl + Shift + L 开启筛选，点列头右侧的漏斗图标按值筛选
+- PDF 连续滚动，文字可选中复制，支持搜索、书签目录和页码跳转
 - 双指捏合或 Ctrl + 滚轮缩放
 - 记住每个文件的阅读位置和缩放
 - 文件在磁盘上改动后自动刷新，适合一边编辑 Markdown 一边看效果

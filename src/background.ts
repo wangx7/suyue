@@ -3,7 +3,8 @@ const EXTS = [
   'docx', 'docm', 'doc', 'xlsx', 'xlsm', 'xlsb', 'xls', 'csv', 'tsv', 'ods', 'md', 'markdown', 'mdown', 'mkd', 'mdx',
   'pptx', 'pptm', 'ppsx', 'ppsm', 'potx', 'epub',
 ];
-const LINK_PATTERNS = EXTS.flatMap((e) => [`*://*/*.${e}`, `*://*/*.${e}?*`, `file:///*.${e}`]);
+// PDF 只出现在右键菜单里：Chrome 自带的 PDF 查看器很好用，不替用户改掉
+const LINK_PATTERNS = [...EXTS, 'pdf'].flatMap((e) => [`*://*/*.${e}`, `*://*/*.${e}?*`, `file:///*.${e}`]);
 const MENU_ID = 'open-in-anyue';
 
 function viewerUrl(url?: string): string {

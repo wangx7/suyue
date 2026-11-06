@@ -10,6 +10,7 @@ const PATHS = {
   search: '<circle cx="11" cy="11" r="6.25"/><path d="m19.5 19.5-4-4"/>',
   close: '<path d="M7 7l10 10M17 7 7 17"/>',
   copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>',
+  filter: '<path d="M4.5 5.5h15l-5.75 7v5.5l-3.5 1.75V12.5z"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   music: '<path d="M9 17.5V6l10-2v11.5"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/>',
 };
